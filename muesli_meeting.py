@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import queue
 import re
 import subprocess
+import threading
+import wave
 from datetime import date, datetime
 from pathlib import Path
 
@@ -11,7 +14,6 @@ import requests
 import sounddevice as sd
 import yaml
 from faster_whisper import WhisperModel
-from scipy.io.wavfile import write as write_wav
 
 
 CONFIG_PATH = Path(__file__).with_name("muesli_config.yaml")
@@ -194,26 +196,128 @@ def get_default_input_info():
     return device_index, device_info, sample_rate
 
 
-def record_until_enter(meeting_name):
+def open_chunk_file(session_id, meeting_name, chunk_index, sample_rate):
+    filename = f"{session_id}_{safe_filename(meeting_name)}_chunk_{chunk_index:03d}.wav"
+    path = TEMP_AUDIO_DIR / filename
+
+    wav = wave.open(str(path), "wb")
+    wav.setnchannels(1)
+    wav.setsampwidth(2)
+    wav.setframerate(sample_rate)
+
+    return path, wav
+
+
+def disk_writer_thread(
+    audio_queue,
+    ready_chunks,
+    stop_event,
+    sample_rate,
+    chunk_seconds,
+    session_id,
+    meeting_name,
+):
+    chunk_index = 1
+    frames_written = 0
+    frames_per_chunk = int(sample_rate * chunk_seconds)
+
+    current_path, current_wav = open_chunk_file(
+        session_id=session_id,
+        meeting_name=meeting_name,
+        chunk_index=chunk_index,
+        sample_rate=sample_rate,
+    )
+
+    print(f"[muesli] opened temp chunk: {current_path.name}")
+
+    while not stop_event.is_set() or not audio_queue.empty():
+        try:
+            frames = audio_queue.get(timeout=0.2)
+        except queue.Empty:
+            continue
+
+        frames = np.nan_to_num(frames)
+        frames = np.clip(frames, -1.0, 1.0)
+        frames_int16 = np.int16(frames * 32767)
+
+        current_wav.writeframes(frames_int16.tobytes())
+        frames_written += len(frames_int16)
+
+        if frames_written >= frames_per_chunk:
+            current_wav.close()
+            ready_chunks.append(current_path)
+            print(f"[muesli] closed temp chunk: {current_path.name}")
+
+            chunk_index += 1
+            frames_written = 0
+
+            current_path, current_wav = open_chunk_file(
+                session_id=session_id,
+                meeting_name=meeting_name,
+                chunk_index=chunk_index,
+                sample_rate=sample_rate,
+            )
+            print(f"[muesli] opened temp chunk: {current_path.name}")
+
+        audio_queue.task_done()
+
+    current_wav.close()
+
+    if current_path.exists() and current_path.stat().st_size > 44:
+        ready_chunks.append(current_path)
+        print(f"[muesli] closed final temp chunk: {current_path.name}")
+    elif current_path.exists():
+        current_path.unlink(missing_ok=True)
+
+    print("[muesli] disk writer stopped.")
+
+
+def record_chunks_until_enter(meeting_name, config):
     TEMP_AUDIO_DIR.mkdir(exist_ok=True)
 
     device_index, device_info, sample_rate = get_default_input_info()
+    chunk_seconds = int(config.get("audio", {}).get("chunk_seconds", 45))
+    session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     print(f"[muesli] input device: {device_info['name']}")
     print(f"[muesli] sample rate: {sample_rate}")
+    print(f"[muesli] chunk length: {chunk_seconds}s")
     print()
 
-    frames = []
+    audio_queue = queue.Queue(maxsize=200)
+    ready_chunks = []
+    stop_event = threading.Event()
+
+    writer = threading.Thread(
+        target=disk_writer_thread,
+        args=(
+            audio_queue,
+            ready_chunks,
+            stop_event,
+            sample_rate,
+            chunk_seconds,
+            session_id,
+            meeting_name,
+        ),
+        daemon=True,
+    )
 
     def callback(indata, frame_count, time_info, status):
         if status:
             print(f"[muesli] audio warning: {status}")
-        frames.append(indata.copy())
+
+        try:
+            audio_queue.put_nowait(indata.copy())
+        except queue.Full:
+            print("[muesli] warning: audio queue full; dropping frames")
 
     input("Press Enter to start recording...")
 
+    writer.start()
+
     print()
     print("[muesli] recording started.")
+    print("[muesli] audio is being written to temporary chunks.")
     print("[muesli] press Enter to stop.")
     print()
 
@@ -228,47 +332,23 @@ def record_until_enter(meeting_name):
 
     print()
     print("[muesli] recording stopped.")
+    print("[muesli] finishing temp audio chunks...")
 
-    if not frames:
-        raise RuntimeError("No audio frames captured.")
+    stop_event.set()
+    writer.join()
 
-    audio = np.concatenate(frames, axis=0)
-    audio = np.nan_to_num(audio)
-    audio = np.clip(audio, -1.0, 1.0)
-    audio_int16 = np.int16(audio * 32767)
+    if not ready_chunks:
+        raise RuntimeError("No audio chunks were captured.")
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{timestamp}_{safe_filename(meeting_name)}.wav"
-    audio_path = TEMP_AUDIO_DIR / filename
-
-    write_wav(audio_path, sample_rate, audio_int16)
-
-    duration_seconds = len(audio_int16) / sample_rate
-    print(f"[muesli] audio saved temporarily: {audio_path}")
-    print(f"[muesli] duration: {duration_seconds:.1f}s")
+    print(f"[muesli] chunks captured: {len(ready_chunks)}")
     print()
 
-    return audio_path
+    return ready_chunks
 
 
-def transcribe_audio(audio_path, config):
-    transcription_config = config["transcription"]
-    whisper_model = transcription_config["whisper_model"]
-    language = transcription_config.get("language")
-    device = transcription_config["device"]
-    compute_type = transcription_config["compute_type"]
-
-    print(f"[muesli] loading transcription model: faster-whisper/{whisper_model}")
-    print("[muesli] transcribing...")
-
-    model = WhisperModel(
-        whisper_model,
-        device=device,
-        compute_type=compute_type,
-    )
-
+def transcribe_single_chunk(model, chunk_path, language):
     segments, info = model.transcribe(
-        str(audio_path),
+        str(chunk_path),
         beam_size=5,
         vad_filter=True,
         language=language,
@@ -281,10 +361,47 @@ def transcribe_audio(audio_path, config):
         if text:
             transcript_parts.append(text)
 
-    transcript = " ".join(transcript_parts).strip()
+    return " ".join(transcript_parts).strip(), info.language
+
+
+def transcribe_chunks(chunk_paths, config):
+    transcription_config = config["transcription"]
+    whisper_model = transcription_config["whisper_model"]
+    language = transcription_config.get("language")
+    device = transcription_config["device"]
+    compute_type = transcription_config["compute_type"]
+
+    print(f"[muesli] loading transcription model: faster-whisper/{whisper_model}")
+    print(f"[muesli] transcribing {len(chunk_paths)} chunk(s)...")
+
+    model = WhisperModel(
+        whisper_model,
+        device=device,
+        compute_type=compute_type,
+    )
+
+    transcript_parts = []
+    detected_languages = []
+
+    for index, chunk_path in enumerate(chunk_paths, start=1):
+        print(f"[muesli] transcribing chunk {index}/{len(chunk_paths)}: {chunk_path.name}")
+
+        text, detected_language = transcribe_single_chunk(
+            model=model,
+            chunk_path=chunk_path,
+            language=language,
+        )
+
+        detected_languages.append(detected_language)
+
+        if text:
+            transcript_parts.append(text)
+
+    transcript = "\n".join(transcript_parts).strip()
+    language_summary = ", ".join(sorted(set(detected_languages)))
 
     print("[muesli] transcription finished.")
-    print(f"[muesli] detected language: {info.language}")
+    print(f"[muesli] detected language(s): {language_summary}")
     print()
 
     return transcript
@@ -303,18 +420,23 @@ def summarize_transcript(transcript, config):
     temperature = config.get("summary", {}).get("temperature", 0.2)
 
     prompt = f"""You are summarizing a meeting transcript.
+Note: This transcript features multiple speakers but lacks explicit speaker labels.
 
 Output ONLY the following sections, using these exact Markdown headers.
 
 Rules:
+- Analyze the dialogue flow to infer distinct viewpoints and agreements.
+- For Action Items and Decisions, attribute them to specific names mentioned in the text.
+- If no names are mentioned, use neutral descriptive placeholders such as "One participant" or "Another participant". Do not invent roles, titles, or names.
 - If the transcript contains any meaningful speech, TLDR must NOT be "None".
 - TLDR should be 1-2 concise sentences explaining what the conversation was about.
 - Key Points should capture the main useful facts, even if the conversation is short or informal.
-- Capture every action item with its owner and any due date.
 - Put UNRESOLVED or PARKED items under Open Questions, not Decisions.
+- Only list a Decision when the transcript clearly indicates a final agreement, commitment, or chosen direction.
+- Do not treat opinions, suggestions, preferences, or "we need to decide" statements as Decisions; put unresolved items under Open Questions.
 - If a decision was reversed during the meeting, report the FINAL decision.
 - Only write "None" for Decisions, Action Items, or Open Questions if that section truly has no content.
-- Do not invent details that are not in the transcript.
+- Do not invent details or names that are not in the transcript.
 
 ## TLDR
 ## Key Points
@@ -355,12 +477,19 @@ Transcript:
     return summary
 
 
-def maybe_delete_audio(audio_path, config):
+def maybe_delete_audio_chunks(chunk_paths, config):
     should_delete = config.get("audio", {}).get("delete_temp_audio", True)
 
-    if should_delete and audio_path.exists():
-        audio_path.unlink()
-        print("[muesli] temporary audio deleted.")
+    if not should_delete:
+        return
+
+    deleted = 0
+    for chunk_path in chunk_paths:
+        if chunk_path.exists():
+            chunk_path.unlink()
+            deleted += 1
+
+    print(f"[muesli] temporary audio chunks deleted: {deleted}")
 
 
 def main():
@@ -389,12 +518,12 @@ def main():
     print("[muesli] status: recording")
     print()
 
-    audio_path = record_until_enter(meeting_name)
+    chunk_paths = record_chunks_until_enter(meeting_name, config)
 
     write_note(note_path, meeting_name, meeting_date, status="transcribing")
     print("[muesli] status: transcribing")
 
-    transcript = transcribe_audio(audio_path, config)
+    transcript = transcribe_chunks(chunk_paths, config)
 
     write_note(
         note_path,
@@ -427,7 +556,7 @@ def main():
         transcript=transcript,
     )
 
-    maybe_delete_audio(audio_path, config)
+    maybe_delete_audio_chunks(chunk_paths, config)
 
     print("[muesli] meeting note updated with TLDR.")
     print("[muesli] status: complete")

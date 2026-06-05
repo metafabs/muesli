@@ -15,12 +15,13 @@ meeting happens
 → temporary audio is deleted
 Current status
 
-Muesli is currently an early local prototype.
+Muesli is an early local prototype.
 
 Working:
 
 Terminal command: muesli
 Mic recording through PortAudio / sounddevice
+Chunked temporary audio recording
 Local transcription with faster-whisper
 Local summarization through Ollama
 Markdown note creation in Obsidian
@@ -29,11 +30,11 @@ Temporary audio cleanup
 Not built yet:
 
 System audio / guest audio capture
-Chunked transcription during long meetings
 Speaker diarization
 Calendar integration
 Hotkey
 GUI
+Live TLDR during meetings
 Local-first principles
 
 Muesli is designed around a few constraints:
@@ -64,7 +65,7 @@ Install
 
 Clone the repo:
 
-git clone https://github.com/YOUR_USERNAME/muesli.git
+git clone https://github.com/metafabs/muesli.git
 cd muesli
 
 Create a virtual environment:
@@ -167,19 +168,22 @@ This was chosen because it is fast, local, and good enough for meeting summaries
 
 Notes on audio
 
-The current version records from the default microphone input.
+The current version records from the default microphone input and writes temporary audio in chunks.
 
 If you are on headphones during a Zoom / Meet / Teams call, mic-only capture may not hear the other person clearly. Capturing guest/system audio requires an additional routing layer such as BlackHole or Loopback and is not implemented yet.
+
+Recording notice
+
+Make sure everyone in a meeting is aware before recording.
 
 Roadmap
 
 Near-term:
 
-Add chunked recording/transcription for longer meetings
+Improve chunked recording/transcription reliability
 Add guest/system audio capture
 Improve setup script
 Add better terminal status display
-Add GitHub release instructions
 
 Later:
 
