@@ -1,0 +1,18 @@
+models:
+  meeting_summary: "qwen2.5:7b"
+
+transcription:
+  whisper_model: "base"
+  language: "en"
+  device: "cpu"
+  compute_type: "int8"
+
+obsidian:
+  meetings_folder: "/path/to/your/obsidian/vault/meetings"
+
+audio:
+  chunk_seconds: 45
+  delete_temp_audio: true
+
+summary:
+  temperature: 0.2

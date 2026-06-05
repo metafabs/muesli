@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Local config
+muesli_config.yaml
+
+# Temporary audio
+temp_audio/
+*.wav
+*.mp3
+*.m4a
+
+# macOS
+.DS_Store
+
+# Logs / local output
+*.log
