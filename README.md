@@ -148,6 +148,8 @@ tags:
 
 ## TLDR
 
+## Discussion Summary
+
 ## Key Points
 
 ## Decisions

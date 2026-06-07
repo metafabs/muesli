@@ -145,6 +145,8 @@ def build_note_content(meeting_name, meeting_date, status, summary_body=None, tr
     if summary_body is None:
         summary_body = """## TLDR
 
+## Discussion Summary
+
 ## Key Points
 
 ## Decisions
@@ -420,17 +422,20 @@ def summarize_transcript(transcript, config):
     temperature = config.get("summary", {}).get("temperature", 0.2)
 
     prompt = f"""You are summarizing a meeting transcript.
-Note: This transcript features multiple speakers but lacks explicit speaker labels.
+Note: This transcript may feature multiple speakers but lacks explicit speaker labels.
 
 Output ONLY the following sections, using these exact Markdown headers.
 
 Rules:
+- If the transcript contains any meaningful speech, TLDR must NOT be "None".
+- TLDR should be useful, not overly compressed. For longer transcripts, use 3-5 bullets or 2-4 concise sentences.
+- Add a Discussion Summary section after TLDR.
+- Discussion Summary should explain the main arc of the conversation in 2-5 short paragraphs.
+- If the conversation is educational, advisory, or exploratory rather than decision-oriented, preserve the main concepts, recommendations, and tradeoffs.
+- Key Points should capture the main useful facts, even if the conversation is short or informal.
 - Analyze the dialogue flow to infer distinct viewpoints and agreements.
 - For Action Items and Decisions, attribute them to specific names mentioned in the text.
 - If no names are mentioned, use neutral descriptive placeholders such as "One participant" or "Another participant". Do not invent roles, titles, or names.
-- If the transcript contains any meaningful speech, TLDR must NOT be "None".
-- TLDR should be 1-2 concise sentences explaining what the conversation was about.
-- Key Points should capture the main useful facts, even if the conversation is short or informal.
 - Put UNRESOLVED or PARKED items under Open Questions, not Decisions.
 - Only list a Decision when the transcript clearly indicates a final agreement, commitment, or chosen direction.
 - Do not treat opinions, suggestions, preferences, or "we need to decide" statements as Decisions; put unresolved items under Open Questions.
@@ -439,6 +444,7 @@ Rules:
 - Do not invent details or names that are not in the transcript.
 
 ## TLDR
+## Discussion Summary
 ## Key Points
 ## Decisions
 ## Action Items
