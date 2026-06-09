@@ -417,7 +417,151 @@ def clean_summary(summary):
     return summary.strip()
 
 
+
+def _muesli_split_text_for_summary(text, max_chars=12000):
+    """
+    Split long transcripts into safe chunks for local LLM summarization.
+    Character-based on purpose: simple, dependency-free, and good enough for Ollama context safety.
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+
+    paragraphs = re.split(r"\n\s*\n", text)
+    chunks = []
+    current = []
+    current_len = 0
+
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+
+        # If one paragraph is huge, split it by sentence-ish boundaries.
+        if len(para) > max_chars:
+            sentences = re.split(r"(?<=[.!?])\s+", para)
+        else:
+            sentences = [para]
+
+        for piece in sentences:
+            piece = piece.strip()
+            if not piece:
+                continue
+
+            if current and current_len + len(piece) + 2 > max_chars:
+                chunks.append("\n\n".join(current).strip())
+                current = [piece]
+                current_len = len(piece)
+            else:
+                current.append(piece)
+                current_len += len(piece) + 2
+
+    if current:
+        chunks.append("\n\n".join(current).strip())
+
+    return chunks
+
+
+def _muesli_summary_failure(reason):
+    return (
+        "Summary failed.\n\n"
+        f"Reason: {reason}\n\n"
+        "Transcript was preserved below."
+    )
+
+
 def summarize_transcript(transcript, config):
+    """
+    Reliable summarization wrapper.
+
+    Keeps the existing Ollama/Gemma summarizer as the core summarizer,
+    but prevents long meetings from being sent as one oversized prompt.
+    """
+    transcript = (transcript or "").strip()
+
+    if not transcript:
+        return _muesli_summary_failure("Transcript was empty.")
+
+    long_transcript_threshold = 16000
+    chunk_size = 12000
+
+    # Short meetings: use the original summarizer directly.
+    if len(transcript) <= long_transcript_threshold:
+        try:
+            summary = _summarize_transcript_single(transcript, config)
+            if summary and summary.strip():
+                return summary.strip()
+        except Exception as exc:
+            return _muesli_summary_failure(exc)
+
+        return _muesli_summary_failure("Ollama returned an empty summary.")
+
+    # Long meetings: summarize in chunks, then synthesize.
+    chunks = _muesli_split_text_for_summary(transcript, max_chars=chunk_size)
+
+    if not chunks:
+        return _muesli_summary_failure("Could not split transcript into summary chunks.")
+
+    chunk_summaries = []
+
+    for index, chunk in enumerate(chunks, start=1):
+        chunk_prompt = (
+            f"This is part {index} of {len(chunks)} from one meeting transcript.\n\n"
+            "Summarize this section only. Capture decisions, action items, important context, "
+            "open questions, names, dates, and project references. Be concise but specific.\n\n"
+            "Transcript section:\n"
+            f"{chunk}"
+        )
+
+        try:
+            chunk_summary = _summarize_transcript_single(chunk_prompt, config)
+            if chunk_summary and chunk_summary.strip():
+                chunk_summaries.append(
+                    f"Part {index}/{len(chunks)} summary:\n{chunk_summary.strip()}"
+                )
+            else:
+                chunk_summaries.append(
+                    f"Part {index}/{len(chunks)} summary failed: empty Ollama response."
+                )
+        except Exception as exc:
+            chunk_summaries.append(
+                f"Part {index}/{len(chunks)} summary failed: {exc}"
+            )
+
+    combined_summaries = "\n\n---\n\n".join(chunk_summaries).strip()
+
+    final_prompt = (
+        "Create one clean final meeting summary from these partial summaries.\n\n"
+        "Use this structure:\n"
+        "1. Executive summary\n"
+        "2. Key decisions\n"
+        "3. Action items\n"
+        "4. Open questions\n"
+        "5. Important context\n\n"
+        "Do not mention that these were chunk summaries unless a chunk failed.\n\n"
+        f"{combined_summaries}"
+    )
+
+    try:
+        final_summary = _summarize_transcript_single(final_prompt, config)
+        if final_summary and final_summary.strip():
+            return final_summary.strip()
+    except Exception as exc:
+        return (
+            "Partial summary created, but final synthesis failed.\n\n"
+            f"Reason: {exc}\n\n"
+            f"{combined_summaries}"
+        )
+
+    return (
+        "Partial summary created, but final synthesis returned empty.\n\n"
+        f"{combined_summaries}"
+    )
+
+
+
+
+def _summarize_transcript_single(transcript, config):
     model = config["models"]["meeting_summary"]
     temperature = config.get("summary", {}).get("temperature", 0.2)
 
