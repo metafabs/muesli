@@ -2,7 +2,7 @@
 
 **Muesli** is a local-first meeting notes tool that records a meeting, transcribes it locally, summarizes it locally, and writes a clean Markdown note into an Obsidian vault.
 
-It is not an audio recorder. It is a small command-line tool for turning conversations into Obsidian-ready meeting notes.
+It is designed for people who want useful meeting notes without sending audio, transcripts, or summaries to cloud services.
 
 ## What it does
 
@@ -13,92 +13,106 @@ meeting happens
 → TLDR / key points / decisions / action items are generated locally with Ollama
 → a Markdown note is written to Obsidian
 → temporary audio is deleted
-Current status
+```
 
-Muesli is an early local prototype.
+## Current version
 
-Working:
+Muesli is an early local prototype, but the core flow works.
 
-Terminal command: muesli
-Mic recording through PortAudio / sounddevice
-Chunked temporary audio recording
-Local transcription with faster-whisper
-Local summarization through Ollama
-Markdown note creation in Obsidian
-Temporary audio cleanup
+Today it supports:
 
-Not built yet:
+- Terminal command: `muesli`
+- Mic recording through PortAudio / `sounddevice`
+- Chunked temporary audio recording for longer meetings
+- Local transcription with `faster-whisper`
+- Local summarization through Ollama
+- Markdown note creation in Obsidian
+- Temporary audio cleanup after processing
 
-System audio / guest audio capture
-Speaker diarization
-Calendar integration
-Hotkey
-GUI
-Live TLDR during meetings
-Local-first principles
+## Local-first principles
 
-Muesli is designed around a few constraints:
+Muesli is built around a few constraints:
 
-No cloud transcription
-No cloud summarization
-No permanent audio storage
-Transcript saved locally
-Summary generated locally
-Markdown written directly to Obsidian
-Requirements
-macOS
-Python 3
-Ollama
-gemma4:12b pulled in Ollama
-PortAudio-compatible audio input
-Obsidian vault folder
+- No cloud transcription
+- No cloud summarization
+- No permanent audio storage
+- Transcript saved locally
+- Summary generated locally
+- Markdown written directly to Obsidian
+
+## Requirements
+
+- macOS
+- Python 3
+- Ollama
+- `gemma4:12b` pulled in Ollama
+- PortAudio-compatible audio input
+- Obsidian vault folder
 
 Python packages used:
 
-faster-whisper
-sounddevice
-scipy
-numpy
-pyyaml
-requests
-Install
+- `faster-whisper`
+- `sounddevice`
+- `scipy`
+- `numpy`
+- `pyyaml`
+- `requests`
+
+## Install
 
 Clone the repo:
 
+```bash
 git clone https://github.com/metafabs/muesli.git
 cd muesli
+```
 
 Create a virtual environment:
 
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
+```
 
 Install dependencies:
 
+```bash
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+```
 
 Copy the example config:
 
+```bash
 cp muesli_config.example.yaml muesli_config.yaml
+```
 
-Edit muesli_config.yaml and set your Obsidian meetings folder:
+Edit `muesli_config.yaml` and set your Obsidian meetings folder:
 
+```yaml
 obsidian:
   meetings_folder: "/path/to/your/obsidian/vault/meetings"
-Ollama setup
+```
+
+## Ollama setup
 
 Install Ollama, then pull the meeting summary model:
 
+```bash
 ollama pull gemma4:12b
+```
 
 Check that the model is available:
 
+```bash
 ollama list
-Create the terminal command
+```
 
-Create a small wrapper so you can run Muesli by typing muesli:
+## Create the terminal command
 
+Create a small wrapper so you can run Muesli by typing `muesli`:
+
+```bash
 mkdir -p ~/bin
 
 cat > ~/bin/muesli <<'WRAPPER'
@@ -108,30 +122,37 @@ exec "$HOME/muesli/.venv/bin/python" "$HOME/muesli/muesli_meeting.py"
 WRAPPER
 
 chmod +x ~/bin/muesli
+```
 
-Make sure ~/bin is in your path:
+Make sure `~/bin` is in your path:
 
+```bash
 grep -qxF 'export PATH="$HOME/bin:$PATH"' ~/.zshrc || echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
+```
 
 Then run:
 
+```bash
 muesli
-Usage
-muesli
+```
 
-Flow:
+## Usage
 
+```text
 Meeting name:
 Press Enter to start recording.
 Press Enter to stop recording.
 Transcribing...
 Summarizing...
 Saved to Obsidian.
-Output format
+```
+
+## Output format
 
 Muesli writes notes using this structure:
 
+```markdown
 ---
 type: meeting
 source: muesli
@@ -158,40 +179,29 @@ tags:
 ## Open Questions
 
 ## Transcript
-Current model choice
+```
+
+## Current model choice
 
 Muesli currently uses:
 
+```yaml
 models:
   meeting_summary: "gemma4:12b"
+```
 
-This was chosen because it is fast, local, and good enough for meeting summaries, action items, and decision extraction.
+This was chosen because it runs locally through Ollama and gives stronger meeting summaries than the smaller models tested so far.
 
-Notes on audio
+## Notes on audio
 
 The current version records from the default microphone input and writes temporary audio in chunks.
 
-If you are on headphones during a Zoom / Meet / Teams call, mic-only capture may not hear the other person clearly. Capturing guest/system audio requires an additional routing layer such as BlackHole or Loopback and is not implemented yet.
+If you are on headphones during a Zoom / Meet / Teams call, mic-only capture may not hear the other person clearly. Capturing guest/system audio requires an additional routing layer such as BlackHole or Loopback.
 
-Recording notice
+## Recording notice
 
 Make sure everyone in a meeting is aware before recording.
 
-Roadmap
-
-Near-term:
-
-Improve chunked recording/transcription reliability
-Add guest/system audio capture
-Improve setup script
-Add better terminal status display
-
-Later:
-
-Speaker diarization
-Calendar-aware meeting titles
-Hotkey launch
-Simple desktop wrapper
-License
+## License
 
 Private prototype for now. License to be decided before public release.
