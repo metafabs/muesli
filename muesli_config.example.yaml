@@ -1,5 +1,5 @@
 models:
-  meeting_summary: "qwen2.5:7b"
+  meeting_summary: "gemma4:12b"
 
 transcription:
   whisper_model: "base"

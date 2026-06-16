@@ -49,7 +49,7 @@ Requirements
 macOS
 Python 3
 Ollama
-qwen2.5:7b pulled in Ollama
+gemma4:12b pulled in Ollama
 PortAudio-compatible audio input
 Obsidian vault folder
 
@@ -90,7 +90,7 @@ Ollama setup
 
 Install Ollama, then pull the meeting summary model:
 
-ollama pull qwen2.5:7b
+ollama pull gemma4:12b
 
 Check that the model is available:
 
@@ -141,7 +141,6 @@ audio_saved: false
 status: complete
 tags:
   - meeting
-  - muesli
 ---
 
 # YYYY-MM-DD - Meeting Name
@@ -164,7 +163,7 @@ Current model choice
 Muesli currently uses:
 
 models:
-  meeting_summary: "qwen2.5:7b"
+  meeting_summary: "gemma4:12b"
 
 This was chosen because it is fast, local, and good enough for meeting summaries, action items, and decision extraction.
 

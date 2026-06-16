@@ -167,7 +167,6 @@ audio_saved: false
 status: {status}
 tags:
   - meeting
-  - muesli
 ---
 
 # {title}
