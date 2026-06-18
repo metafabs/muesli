@@ -570,6 +570,10 @@ Note: This transcript may feature multiple speakers but lacks explicit speaker l
 Output ONLY the following sections, using these exact Markdown headers.
 
 Rules:
+- Write the summary in the same primary language as the transcript.
+- Do not translate the summary into English unless the transcript is mostly English.
+- If the transcript is mixed-language, use the language used most often by the speakers.
+- Preserve names, product names, and technical terms in their original form when appropriate.
 - If the transcript contains any meaningful speech, TLDR must NOT be "None".
 - TLDR should be useful, not overly compressed. For longer transcripts, use 3-5 bullets or 2-4 concise sentences.
 - Add a Discussion Summary section after TLDR.
