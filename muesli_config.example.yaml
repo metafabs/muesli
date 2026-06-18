@@ -3,7 +3,7 @@ models:
 
 transcription:
   whisper_model: "base"
-  language: "en"
+  language: null
   device: "cpu"
   compute_type: "int8"
 
