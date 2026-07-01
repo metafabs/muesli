@@ -205,3 +205,25 @@ Make sure everyone in a meeting is aware before recording.
 ## License
 
 Private prototype for now. License to be decided before public release.
+
+### Apple Silicon optimization
+
+By default, Muesli uses a portable Ollama model name:
+
+```yaml
+meeting_summary: "gemma4:12b"
+```
+
+On Apple Silicon Macs, you can try the MLX-optimized version for faster local summarization:
+
+```yaml
+meeting_summary: "gemma4:12b-mlx"
+```
+
+Pull it first:
+
+```bash
+ollama pull gemma4:12b-mlx
+```
+
+Keep this setting in your local `muesli_config.yaml`. The example config stays portable for users on different machines.
