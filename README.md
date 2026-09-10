@@ -243,4 +243,4 @@ Muesli is an early personal project. The core capture → transcribe → summari
 
 ## License
 
-No open-source license has been selected yet. Until one is added, the repository is source-available for viewing but no additional permissions are granted by default.
+Muesli is released under the MIT License. See `LICENSE` for details.
