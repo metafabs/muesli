@@ -4,6 +4,7 @@
 import queue
 import re
 import subprocess
+import sys
 import threading
 import wave
 from datetime import date, datetime
@@ -144,6 +145,8 @@ def build_note_content(meeting_name, meeting_date, status, summary_body=None, tr
 
     if summary_body is None:
         summary_body = """## TLDR
+
+## Discussion Summary
 
 ## Key Points
 
@@ -460,11 +463,31 @@ def _muesli_split_text_for_summary(text, max_chars=12000):
 
 
 def _muesli_summary_failure(reason):
-    return (
-        "Summary failed.\n\n"
-        f"Reason: {reason}\n\n"
-        "Transcript was preserved below."
-    )
+    return f"""## TLDR
+
+Summary failed. Transcript was preserved below.
+
+Reason: {reason}
+
+## Discussion Summary
+
+Summary unavailable.
+
+## Key Points
+
+Summary unavailable.
+
+## Decisions
+
+Summary unavailable.
+
+## Action Items
+
+Summary unavailable.
+
+## Open Questions
+
+Summary unavailable."""
 
 
 def summarize_transcript(transcript, config):
@@ -568,17 +591,15 @@ Note: This transcript may feature multiple speakers but lacks explicit speaker l
 Output ONLY the following sections, using these exact Markdown headers.
 
 Rules:
-- Write the summary in the same primary language as the transcript.
-- Do not translate the summary into English unless the transcript is mostly English.
-- If the transcript is mixed-language, use the language used most often by the speakers.
-- Preserve names, product names, and technical terms in their original form when appropriate.
 - If the transcript contains any meaningful speech, TLDR must NOT be "None".
 - TLDR should be useful, not overly compressed. For longer transcripts, use 3-5 bullets or 2-4 concise sentences.
+- Add a Discussion Summary section after TLDR.
+- Discussion Summary should explain the main arc of the conversation in 2-5 short paragraphs.
 - If the conversation is educational, advisory, or exploratory rather than decision-oriented, preserve the main concepts, recommendations, and tradeoffs.
 - Key Points should capture the main useful facts, even if the conversation is short or informal.
 - Analyze the dialogue flow to infer distinct viewpoints and agreements.
 - For Action Items and Decisions, attribute them to specific names mentioned in the text.
-- If no names are mentioned, use "Speaker 1" and "Speaker 2" for clearly distinct speakers. If ownership is unclear, write "Unassigned". Do not invent roles, titles, or names.
+- If no names are mentioned, use neutral descriptive placeholders such as "One participant" or "Another participant". Do not invent roles, titles, or names.
 - Put UNRESOLVED or PARKED items under Open Questions, not Decisions.
 - Only list a Decision when the transcript clearly indicates a final agreement, commitment, or chosen direction.
 - Do not treat opinions, suggestions, preferences, or "we need to decide" statements as Decisions; put unresolved items under Open Questions.
@@ -587,6 +608,7 @@ Rules:
 - Do not invent details or names that are not in the transcript.
 
 ## TLDR
+## Discussion Summary
 ## Key Points
 ## Decisions
 ## Action Items
@@ -608,7 +630,7 @@ Transcript:
                 "temperature": temperature,
             },
         },
-        timeout=180,
+        timeout=(10, config.get("summary", {}).get("timeout_seconds", 600)),
     )
 
     response.raise_for_status()
@@ -640,6 +662,70 @@ def maybe_delete_audio_chunks(chunk_paths, config):
     print(f"[muesli] temporary audio chunks deleted: {deleted}")
 
 
+
+def resummarize_latest_failed_note(config):
+    """Re-run only the Ollama summary for the newest failed meeting note."""
+    folder = Path(config["obsidian"]["meetings_folder"])
+    candidates = []
+
+    for note_path in folder.glob("*.md"):
+        try:
+            text = note_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        if "## Transcript" not in text:
+            continue
+
+        if "Summary failed." in text or "status: summary_failed" in text:
+            candidates.append((note_path.stat().st_mtime, note_path, text))
+
+    if not candidates:
+        raise RuntimeError("No failed meeting note with a preserved transcript was found.")
+
+    _, note_path, text = max(candidates, key=lambda item: item[0])
+    transcript_marker = "\n## Transcript\n"
+
+    if transcript_marker not in text:
+        raise RuntimeError(f"Transcript section not found in: {note_path}")
+
+    transcript = text.split(transcript_marker, 1)[1].strip()
+    if not transcript:
+        raise RuntimeError(f"Transcript is empty in: {note_path}")
+
+    metadata = {}
+    if text.startswith("---\n"):
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            metadata = yaml.safe_load(parts[1]) or {}
+
+    meeting_name = str(metadata.get("meeting") or note_path.stem)
+    meeting_date = str(metadata.get("date") or date.today().isoformat())
+
+    print(f"[muesli] re-summarizing: {note_path.name}")
+    summary = summarize_transcript(transcript, config)
+
+    failed = (
+        summary.startswith("Summary failed.")
+        or summary.startswith("Partial summary created, but final synthesis failed.")
+        or summary.startswith("Partial summary created, but final synthesis returned empty.")
+    )
+    status = "summary_failed" if failed else "complete"
+
+    write_note(
+        note_path,
+        meeting_name=meeting_name,
+        meeting_date=meeting_date,
+        status=status,
+        summary_body=summary,
+        transcript=transcript,
+    )
+
+    print(f"[muesli] status: {status}")
+    print(f"[muesli] saved to: {note_path}")
+    print()
+
+
 def main():
     print_header()
     print("[muesli] checking local stack...")
@@ -650,6 +736,10 @@ def main():
 
     print("[muesli] ready.")
     print()
+
+    if len(sys.argv) > 1 and sys.argv[1] == "--resummarize-latest":
+        resummarize_latest_failed_note(config)
+        return
 
     meeting_name = clean_meeting_name(input("Meeting name: "))
     meeting_date = date.today().isoformat()
@@ -694,20 +784,26 @@ def main():
     print("[muesli] status: summarizing")
 
     summary = summarize_transcript(transcript, config)
+    summary_failed = (
+        "Summary failed." in summary
+        or summary.startswith("Partial summary created, but final synthesis failed.")
+        or summary.startswith("Partial summary created, but final synthesis returned empty.")
+    )
+    final_status = "summary_failed" if summary_failed else "complete"
 
     write_note(
         note_path,
         meeting_name,
         meeting_date,
-        status="complete",
+        status=final_status,
         summary_body=summary,
         transcript=transcript,
     )
 
     maybe_delete_audio_chunks(chunk_paths, config)
 
-    print("[muesli] meeting note updated with TLDR.")
-    print("[muesli] status: complete")
+    print("[muesli] meeting note updated.")
+    print(f"[muesli] status: {final_status}")
     print(f"[muesli] saved to: {note_path}")
     print()
 
