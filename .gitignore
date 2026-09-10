@@ -3,8 +3,17 @@
 __pycache__/
 *.pyc
 
-# Local config
+# Local config / secrets
 muesli_config.yaml
+.env
+.env.*
+
+# Local backups / scratch files
+*.bak
+*.backup
+*.backup-*
+*.orig
+*.tmp
 
 # Temporary audio
 temp_audio/
