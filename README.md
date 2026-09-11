@@ -1,8 +1,93 @@
 # Muesli
 
-**Muesli** is a local-first meeting notes tool for macOS. It records microphone audio, transcribes it locally with `faster-whisper`, summarizes it locally through Ollama, and writes a structured Markdown note into an Obsidian vault.
+**Muesli** is a local-first meeting notes tool for macOS. It records microphone audio, transcribes it locally with `faster-whisper`, summarizes it locally through Ollama, and writes a structured Markdown note into an Obsidian vault or any normal folder.
 
 The core goal is simple: stay present in the meeting, then let the machine handle capture, transcription, and note formatting without sending meeting audio or transcripts to a cloud transcription service.
+
+## Beginner installation
+
+You do **not** need to be a programmer to try Muesli. You do need a Mac and about 10–20 minutes for the first setup. The first model download can take longer depending on your internet connection.
+
+### 1. Open Terminal
+
+On your Mac, press `Command + Space`, type `Terminal`, and open it.
+
+### 2. Install Homebrew if you do not already have it
+
+Paste this into Terminal:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+Follow the instructions Homebrew shows you.
+
+### 3. Download Muesli
+
+Paste these commands into Terminal:
+
+```bash
+git clone https://github.com/metafabs/muesli.git
+cd muesli
+```
+
+### 4. Run the setup assistant
+
+```bash
+zsh setup.sh
+```
+
+The setup script will:
+
+- check the Mac requirements
+- install Python if needed
+- install PortAudio
+- install Ollama if needed
+- create a private Python environment for Muesli
+- install the Python packages
+- ask where you want meeting notes saved
+- download the local summary model if needed
+- create a `muesli` Terminal command
+
+If you already have a personal `muesli_config.yaml`, setup leaves it unchanged.
+
+### 5. Choose where notes should go
+
+When setup asks where to save meetings, you have two easy options.
+
+**Recommended: Obsidian.** Install Obsidian, create or open a vault, then give Muesli a folder inside that vault. For example:
+
+```text
+/Users/yourname/Documents/My Vault/Meetings
+```
+
+**No Obsidian? No problem.** Press Enter and Muesli will use:
+
+```text
+~/Documents/Muesli Meetings
+```
+
+Muesli writes normal Markdown files, so Obsidian is useful but not required.
+
+### 6. Start Muesli
+
+Open a new Terminal window and run:
+
+```bash
+muesli
+```
+
+Muesli asks for a meeting name. Press Enter to start recording and Enter again to stop.
+
+The first transcription can take longer because the Whisper model may need to download once.
+
+### If you get stuck
+
+You can paste this GitHub repository link into ChatGPT and say:
+
+> I am not a programmer. Help me install this Muesli project on my Mac one step at a time. Check that each step worked before giving me the next one.
+
+That is a good fallback for machine-specific Homebrew, Python, microphone-permission, or Ollama issues.
 
 ## What it does
 
@@ -11,7 +96,7 @@ meeting
 → temporary local audio chunks
 → local transcription with faster-whisper
 → local summary with Ollama
-→ Markdown note in Obsidian
+→ Markdown note in Obsidian or another local folder
 → temporary audio cleanup after a normal run
 ```
 
@@ -29,12 +114,12 @@ Muesli also preserves the transcript if summarization fails, so the latest faile
 
 ## Local-first behavior
 
-Muesli is designed so that the sensitive meeting content stays on your machine:
+Muesli is designed so that sensitive meeting content stays on your machine:
 
 - Audio is recorded locally.
 - Transcription runs locally with `faster-whisper`.
 - Summarization runs against a local Ollama instance at `localhost`.
-- Notes are written directly to a local Obsidian folder.
+- Notes are written directly to a local folder.
 - Your personal config file is local-only and excluded from Git.
 - Temporary audio chunks are deleted after a normal processing run.
 
@@ -47,11 +132,13 @@ If the process is interrupted or crashes before cleanup, temporary chunks can re
 - Ollama
 - A local Ollama model such as `gemma4:12b`
 - PortAudio-compatible microphone input
-- Obsidian, or any local folder where you want the Markdown notes written
+- Obsidian or any local folder where you want the Markdown notes written
 
-## Install
+The beginner setup script handles most of this automatically after Homebrew is installed.
 
-Clone the repository:
+## Manual installation
+
+If you prefer to set Muesli up yourself, clone the repository:
 
 ```bash
 git clone https://github.com/metafabs/muesli.git
@@ -72,9 +159,7 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-## Install Ollama and a local model
-
-Install Ollama, then pull a model for meeting summaries:
+Install Ollama and pull a model for meeting summaries:
 
 ```bash
 ollama pull gemma4:12b
@@ -85,10 +170,6 @@ Confirm it is available:
 ```bash
 ollama list
 ```
-
-On Apple Silicon, you can use an MLX-optimized model if you already have one available in Ollama. Set the model name in your local config accordingly.
-
-## Configure Muesli
 
 Copy the example config:
 
@@ -102,7 +183,7 @@ At minimum, set the folder where Muesli should write meeting notes:
 
 ```yaml
 obsidian:
-  meetings_folder: "/path/to/your/obsidian/vault/meetings"
+  meetings_folder: "/path/to/your/notes/folder"
 ```
 
 A typical config looks like this:
@@ -118,7 +199,7 @@ transcription:
   compute_type: "int8"
 
 obsidian:
-  meetings_folder: "/path/to/your/obsidian/vault/meetings"
+  meetings_folder: "/path/to/your/notes/folder"
 
 audio:
   chunk_seconds: 45
@@ -130,55 +211,19 @@ summary:
 
 With `language: null`, Whisper detects the transcription language automatically. You can instead set a language code if you want to force a specific language.
 
-## Run it
+On Apple Silicon, you can use an MLX-optimized Ollama model if you already have one available. Set the model name in your local config accordingly.
 
-From the project folder:
+## Run it manually
+
+From the project folder with the virtual environment active:
 
 ```bash
 python muesli_meeting.py
 ```
 
-Muesli will ask for a meeting name, then:
-
-```text
-Press Enter to start recording...
-Press Enter to stop recording...
-```
-
-After recording stops, it transcribes, summarizes, writes the note, and cleans up the temporary audio chunks.
-
-## Optional `muesli` terminal command
-
-If you want to launch it by typing `muesli`, create a wrapper:
-
-```bash
-mkdir -p ~/bin
-
-cat > ~/bin/muesli <<'WRAPPER'
-#!/bin/zsh
-cd "$HOME/muesli" || exit 1
-exec "$HOME/muesli/.venv/bin/python" "$HOME/muesli/muesli_meeting.py" "$@"
-WRAPPER
-
-chmod +x ~/bin/muesli
-```
-
-Make sure `~/bin` is on your `PATH`:
-
-```bash
-grep -qxF 'export PATH="$HOME/bin:$PATH"' ~/.zshrc || echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-Then run:
-
-```bash
-muesli
-```
-
 ## Re-summarize the latest failed note
 
-If transcription succeeded but Ollama failed during summarization, the transcript is preserved in the Obsidian note.
+If transcription succeeded but Ollama failed during summarization, the transcript is preserved in the note.
 
 Retry the latest failed note with:
 
@@ -239,7 +284,7 @@ Do not commit your real `muesli_config.yaml`, meeting notes, transcripts, audio 
 
 ## Status
 
-Muesli is an early personal project. The core capture → transcribe → summarize → Obsidian workflow works, but it is not packaged as a polished desktop application and has not been tested across every Mac or Ollama configuration.
+Muesli is an early personal project. The core capture → transcribe → summarize → Markdown workflow works, but it is not packaged as a polished desktop application and has not been tested across every Mac or Ollama configuration.
 
 ## License
 
