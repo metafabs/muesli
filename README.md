@@ -130,7 +130,7 @@ If the process is interrupted or crashes before cleanup, temporary chunks can re
 - macOS
 - Python 3
 - Ollama
-- A local Ollama model such as `gemma4:12b`
+- `gemma4:12b-mlx` for local meeting summaries
 - PortAudio-compatible microphone input
 - Obsidian or any local folder where you want the Markdown notes written
 
@@ -159,10 +159,10 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-Install Ollama and pull a model for meeting summaries:
+Install Ollama and pull the MLX-optimized Gemma model for meeting summaries:
 
 ```bash
-ollama pull gemma4:12b
+ollama pull gemma4:12b-mlx
 ```
 
 Confirm it is available:
@@ -190,7 +190,7 @@ A typical config looks like this:
 
 ```yaml
 models:
-  meeting_summary: "gemma4:12b"
+  meeting_summary: "gemma4:12b-mlx"
 
 transcription:
   whisper_model: "base"
@@ -211,7 +211,7 @@ summary:
 
 With `language: null`, Whisper detects the transcription language automatically. You can instead set a language code if you want to force a specific language.
 
-On Apple Silicon, you can use an MLX-optimized Ollama model if you already have one available. Set the model name in your local config accordingly.
+Muesli now defaults to the MLX-optimized Gemma 4 12B model for local summarization on Apple Silicon Macs.
 
 ## Run it manually
 
