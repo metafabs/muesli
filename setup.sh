@@ -90,7 +90,7 @@ notes_dir = Path(os.path.expanduser(os.environ["NOTES_DIR"])).resolve()
 notes_dir.mkdir(parents=True, exist_ok=True)
 
 config = {
-    "models": {"meeting_summary": "gemma4:12b"},
+    "models": {"meeting_summary": "gemma4:12b-mlx"},
     "transcription": {
         "whisper_model": "base",
         "language": None,
@@ -114,7 +114,7 @@ MODEL="$(.venv/bin/python - <<'PY'
 import yaml
 with open("muesli_config.yaml", "r", encoding="utf-8") as f:
     config = yaml.safe_load(f) or {}
-print(config.get("models", {}).get("meeting_summary", "gemma4:12b"))
+print(config.get("models", {}).get("meeting_summary", "gemma4:12b-mlx"))
 PY
 )"
 
